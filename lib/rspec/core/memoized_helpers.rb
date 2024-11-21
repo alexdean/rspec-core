@@ -323,8 +323,31 @@ EOS
           # as we can override them.
           if our_module.instance_methods(false).include?(name)
             our_module.__send__(:remove_method, name)
+            # EXPERIMENT
+            our_module.__send__(:remove_method, "__#{name}_main")
           end
-          our_module.__send__(:define_method, name, &block)
+
+          # EXPERIMENT: when a `let` is invoked for the first time, also report where it was defined.
+          #
+          # for test suites with deeply-nested contexts, with the same `let` being defined/overloaded
+          # at multiple levels, it can be quite hard to determine which definitions are actually in use
+          # in any given test. having the source file & line reported is useful to clear this up.
+          our_module.__send__(:define_method, "__#{name}_main", &block)
+          defined_at = caller_locations[0]
+          our_module.__send__(:define_method, name) do
+            # report where we are when `let` was called
+            # TODO: would rather report this after the test runs.
+            puts "#{name}: #{defined_at.path}:#{defined_at.lineno}"
+            # and then invoke the actual `let` body given by the user.
+            send("__#{name}_main")
+          end
+
+          # # This was my initial attempt, but this results in a WrongScopeError
+          # # which I couldn't figure out how to solve.
+          # our_module.__send__(:define_method, name) do
+          #   puts "#{name}: #{defined_at.path}:#{defined_at.lineno}"
+          #   block.call
+          # end
 
           # If we have a module clash in the example module
           # then we need to remove it to prevent a warning.
